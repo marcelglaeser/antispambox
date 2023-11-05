@@ -1,7 +1,7 @@
 {
   "antispambox": {
     "enabled": "False",
-    "account": {
+    "accounts": [{
       "server": "imap.example.net",
       "user": "username",
       "password": "examplepassword",
@@ -10,6 +10,6 @@
       "ham_train_folder": "HAM",
       "spam_train_folder": "SPAMTrain",
       "spam_train_folder2": "SPAMTrain"
-    }
+    }]
   }
 }
