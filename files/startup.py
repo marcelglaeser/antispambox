@@ -1,8 +1,9 @@
-import os
-from shutil import copyfile
-import subprocess
 import json
+import os
+import subprocess
 import sys
+from shutil import copyfile
+
 
 def cleanup_file(filename):
     """If file exists, delete it"""
@@ -10,6 +11,7 @@ def cleanup_file(filename):
         os.remove(filename)
     else:
         print(f"{filename} does not exist")
+
 
 def copy_file_if_not_exists(src, dest):
     """Copy the file if it does not exist at the destination"""
@@ -19,6 +21,7 @@ def copy_file_if_not_exists(src, dest):
         copyfile(src, dest)
         print(f"{dest} copied")
 
+
 def start_service(servicename):
     """Start a Linux service"""
     print(f"Starting service {servicename}")
@@ -26,6 +29,7 @@ def start_service(servicename):
     p.communicate()
     if p.returncode != 0:
         print(f"Failed to start service {servicename}")
+
 
 def fix_permissions():
     """ fix the permissions of the bayes folders"""
@@ -38,6 +42,7 @@ def fix_permissions():
             print(err)
             print(output)
 
+
 def start_imap_idle(account):
     """Start the IMAP idle process"""
     print(f"Starting IMAP IDLE for {account['user']}")
@@ -48,12 +53,13 @@ def start_imap_idle(account):
         print(err)
         print(output)
 
+
 def check_imap_configuration():
     """Check if the IMAP account has already been configured"""
     try:
         with open("/root/accounts/imap_accounts.json", 'r') as f:
             datastore = json.load(f)
-        
+
         if datastore["antispambox"]["enabled"].lower() != "true":
             print("Antispambox is not enabled - exiting.")
             sys.exit()
@@ -70,7 +76,8 @@ def check_imap_configuration():
         print(e)
         sys.exit()
 
-print("\n\n ******* STARTUP ANTISPAMBOX ******* \n\n")
+
+print("\n\n ******* STARTUP ANTISPAMBOX sdfasdf ******* \n\n")
 
 cleanup_file("/root/.cache/irsd/lock")
 copy_file_if_not_exists("/root/imap_accounts.json", "/root/accounts/imap_accounts.json")

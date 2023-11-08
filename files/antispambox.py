@@ -1,10 +1,11 @@
-from imapclient import IMAPClient
-import subprocess
 import json
-import sys
 import logging
+import subprocess
+import sys
 from logging.handlers import TimedRotatingFileHandler
 from threading import Thread
+
+from imapclient import IMAPClient
 
 # Configure logging
 logger = logging.getLogger("Antispambox")
@@ -23,6 +24,7 @@ except (IndexError, json.JSONDecodeError) as e:
     logger.error("ERROR: Unable to read imap_accounts.json.")
     logger.error(e)
     sys.exit(1)
+
 
 # Define a function to handle IMAP IDLE and spam scanning for a single account
 def handle_account(account):
@@ -66,7 +68,8 @@ def handle_account(account):
         count = 0
         while True:
             try:
-                responses = server.idle_check(timeout=29)
+                responses = server.idle_check(timeout=60)
+                print(responses)
                 if responses:
                     logger.info(f"Response for account {USERNAME}: {responses}")
                     count = 0
@@ -98,11 +101,13 @@ def handle_account(account):
     finally:
         logoff(server)
 
+
 # Main execution
 if __name__ == "__main__":
     # Retrieve and filter enabled accounts
-    enabled_accounts = [acct for acct in datastore["antispambox"]["accounts"] if acct.get("enabled", "False").lower() == "true"]
-    
+    enabled_accounts = [acct for acct in datastore["antispambox"]["accounts"] if
+                        acct.get("enabled", "False").lower() == "true"]
+
     # Start a thread for each enabled account
     threads = []
     for account in enabled_accounts:
