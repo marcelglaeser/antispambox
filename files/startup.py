@@ -77,7 +77,7 @@ def check_imap_configuration():
         sys.exit()
 
 
-print("\n\n ******* STARTUP ANTISPAMBOX sdfasdf ******* \n\n")
+print("\n\n ******* STARTUP ANTISPAMBOX (MULTIACCOUNT) ******* \n\n")
 
 cleanup_file("/root/.cache/irsd/lock")
 copy_file_if_not_exists("/root/imap_accounts.json", "/root/accounts/imap_accounts.json")
