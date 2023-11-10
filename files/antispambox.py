@@ -68,7 +68,7 @@ def handle_account(account):
     def pushing(server):
         max_non_responses = 5
         count = 0
-        max_count = 10  # Die Anzahl, nach der wir die Verbindung erneut herstellen
+        max_count = 10  # The number after which to reconnect for the next account
 
         while True:
             try:
@@ -83,9 +83,10 @@ def handle_account(account):
                     if count > max_non_responses:
                         count = 0
                         logger.info(f"Reconnecting for account {username} due to no response.")
-                        server = login()  # Neue Verbindung herstellen
+                        server = login()  # Reconnect for the next account
+                        break  # Break the loop for this account, start the next
                     elif count > max_count:
-                        break  # Wechsle zum nächsten Account
+                        break  # Switch to the next account
             except KeyboardInterrupt:
                 break
             except Exception as e:
@@ -106,7 +107,9 @@ def handle_account(account):
 
 
 def process_accounts(accounts):
-    for account in accounts:
+    index = 0
+    for _ in range(len(accounts)):  # Round-robin loop through all accounts
+        account = accounts[index]
         try:
             handle_account(account)
         except NoConnectionError:
@@ -114,7 +117,7 @@ def process_accounts(accounts):
         except Exception as e:
             logger.error(f"Error processing account: {account['user']}")
             logger.error(e)
-
+        index = (index + 1) % len(accounts)  # Update the index
 
 def main():
     enabled_accounts = [acct for acct in datastore["antispambox"]["accounts"] if
