@@ -65,10 +65,15 @@ RUN mkdir /root/accounts && \
     ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime && \
     ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/timezone
 
-# Install rspamd
-RUN CODENAME=$(lsb_release -c -s) && \
-    echo "deb [arch=amd64] http://rspamd.com/apt-stable/ $CODENAME main" > /etc/apt/sources.list.d/rspamd.list && \
-    wget -O- https://rspamd.com/apt-stable/gpg.key | apt-key add - && \
+# Install rspamd with signed repository
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    lsb-release wget gpg && \
+    CODENAME=$(lsb_release -c -s) && \
+    mkdir -p /etc/apt/keyrings && \
+    wget -O- https://rspamd.com/apt-stable/gpg.key | gpg --dearmor | tee /etc/apt/keyrings/rspamd.gpg > /dev/null && \
+    echo "deb [signed-by=/etc/apt/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ $CODENAME main" | tee /etc/apt/sources.list.d/rspamd.list && \
+    echo "deb-src [signed-by=/etc/apt/keyrings/rspamd.gpg] http://rspamd.com/apt-stable/ $CODENAME main"  | tee -a /etc/apt/sources.list.d/rspamd.list && \
     apt-get update && \
     apt-get --no-install-recommends install -y rspamd redis-server && \
     sed -i 's+/var/lib/redis+/var/spamassassin/bayesdb+' /etc/redis/redis.conf && \
