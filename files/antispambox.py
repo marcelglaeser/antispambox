@@ -2,6 +2,7 @@ import json
 import logging
 from imapclient import IMAPClient
 import subprocess
+import socket
 from logging.handlers import TimedRotatingFileHandler
 
 logger = logging.getLogger("Antispambox")
@@ -49,14 +50,17 @@ def handle_account(account):
     def login():
         while True:
             try:
-                server = IMAPClient(host)
+                server = IMAPClient(host, timeout=30)
                 server.login(username, password)
                 server.select_folder(inbox)
                 server.idle()
                 logger.info(f"Connection is now in IDLE mode for account: {username}")
                 return server
-            except Exception as e:
-                logger.error(f"Failed to connect for account: {username} - trying next account")
+            except socket.timeout as e:
+                logger.error(f"Timeout while connecting for account: {username}")
+                break
+            except (socket.error, IMAPClient.Error) as e:
+                logger.error(f"Connection error for account: {username}")
                 logger.error(e)
                 raise NoConnectionError
 
@@ -65,38 +69,40 @@ def handle_account(account):
         logger.info(f"IDLE mode done for account: {username}")
         server.logout()
 
-    def pushing(server):
+    def pushing(server, username, login_func, scan_func):
         max_non_responses = 5
+        max_count = 10
         count = 0
-        max_count = 10  # The number after which to reconnect for the next account
 
-        while True:
+        while count <= max_count:
             try:
                 responses = server.idle_check(timeout=600)
                 if responses:
                     logger.info(f"Response for account {username}: {responses}")
+                    scan_func()
                     count = 0
-                    scan_spam()
                 else:
-                    logger.info(f"No responses for account {username}")
+                    logger.info(f"No responses for account: {username}")
                     count += 1
                     if count > max_non_responses:
-                        count = 0
                         logger.info(f"Reconnecting for account {username} due to no response.")
-                        server = login()  # Reconnect for the next account
-                        break  # Break the loop for this account, start the next
-                    elif count > max_count:
-                        break  # Switch to the next account
-            except KeyboardInterrupt:
-                break
-            except Exception as e:
-                logger.error(f"Push error for account: {username}")
-                count = 0
-                break
+                        server = login_func()  # Reconnect for the current account
+                        count = 0
+            except socket.timeout as ex:
+                logger.error(f"Timeout while waiting for responses for account: {username}")
+                logger.error(ex)
+                count = 0  # Reset the counter on timeout
+                break  # Break out of the loop on timeout
+            except Exception as ex:
+                logger.error(f"An error occurred for account: {username}")
+                logger.error(ex)
+                count = 0  # Reset the counter on other exceptions
+
+        return server
 
     try:
         server = login()
-        pushing(server)
+        server = pushing(server, username, login, scan_spam)
     except KeyboardInterrupt:
         pass
     except Exception as e:
@@ -107,9 +113,7 @@ def handle_account(account):
 
 
 def process_accounts(accounts):
-    index = 0
-    for _ in range(len(accounts)):  # Round-robin loop through all accounts
-        account = accounts[index]
+    for account in accounts:
         try:
             handle_account(account)
         except NoConnectionError:
@@ -117,7 +121,7 @@ def process_accounts(accounts):
         except Exception as e:
             logger.error(f"Error processing account: {account['user']}")
             logger.error(e)
-        index = (index + 1) % len(accounts)  # Update the index
+
 
 def main():
     enabled_accounts = [acct for acct in datastore["antispambox"]["accounts"] if

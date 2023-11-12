@@ -65,6 +65,8 @@ RUN mkdir /root/accounts && \
     ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/localtime && \
     ln -sf /usr/share/zoneinfo/Europe/Berlin /etc/timezone
 
+RUN mkdir -p /var/lib/rspamd/dkim && chmod 755 /var/lib/rspamd/dkim && touch /var/lib/rspamd/stats.ucl
+
 # Install rspamd with signed repository
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
