@@ -1,8 +1,11 @@
 import json
 import logging
 from imapclient import IMAPClient
+import sys
 import subprocess
 import socket
+import time
+from concurrent.futures import ThreadPoolExecutor
 from logging.handlers import TimedRotatingFileHandler
 
 logger = logging.getLogger("Antispambox")
@@ -16,15 +19,6 @@ logger.addHandler(logging.StreamHandler())
 
 class NoConnectionError(Exception):
     pass
-
-
-try:
-    with open("/root/accounts/imap_accounts.json", 'r') as f:
-        datastore = json.load(f)
-except (IndexError, json.JSONDecodeError) as e:
-    logger.error("ERROR: Unable to read imap_accounts.json.")
-    logger.error(e)
-    sys.exit(1)
 
 
 def handle_account(account):
@@ -50,12 +44,12 @@ def handle_account(account):
     def login():
         while True:
             try:
-                server = IMAPClient(host, timeout=30)
-                server.login(username, password)
-                server.select_folder(inbox)
-                server.idle()
+                login_server = IMAPClient(host, timeout=30)
+                login_server.login(username, password)
+                login_server.select_folder(inbox)
+                login_server.idle()
                 logger.info(f"Connection is now in IDLE mode for account: {username}")
-                return server
+                return login_server
             except socket.timeout as e:
                 logger.error(f"Timeout while connecting for account: {username}")
                 break
@@ -64,41 +58,41 @@ def handle_account(account):
                 logger.error(e)
                 raise NoConnectionError
 
-    def logoff(server):
-        server.idle_done()
+    def logoff(logoff_server):
+        logoff_server.idle_done()
         logger.info(f"IDLE mode done for account: {username}")
-        server.logout()
+        logoff_server.logout()
 
-    def pushing(server, username, login_func, scan_func):
+    def pushing(push_server, push_username, login_func, scan_func):
         max_non_responses = 5
         max_count = 10
         count = 0
 
         while count <= max_count:
             try:
-                responses = server.idle_check(timeout=600)
+                responses = push_server.idle_check(timeout=600)
                 if responses:
-                    logger.info(f"Response for account {username}: {responses}")
+                    logger.info(f"Response for account {push_username}: {responses}")
                     scan_func()
                     count = 0
                 else:
-                    logger.info(f"No responses for account: {username}")
+                    logger.info(f"No responses for account: {push_username}")
                     count += 1
                     if count > max_non_responses:
-                        logger.info(f"Reconnecting for account {username} due to no response.")
-                        server = login_func()  # Reconnect for the current account
+                        logger.info(f"Reconnecting for account {push_username} due to no response.")
+                        push_server = login_func()  # Reconnect for the current account
                         count = 0
             except socket.timeout as ex:
-                logger.error(f"Timeout while waiting for responses for account: {username}")
+                logger.error(f"Timeout while waiting for responses for account: {push_username}")
                 logger.error(ex)
                 count = 0  # Reset the counter on timeout
                 break  # Break out of the loop on timeout
             except Exception as ex:
-                logger.error(f"An error occurred for account: {username}")
+                logger.error(f"An error occurred for account: {push_username}")
                 logger.error(ex)
                 count = 0  # Reset the counter on other exceptions
 
-        return server
+        return push_server
 
     try:
         server = login()
@@ -112,23 +106,34 @@ def handle_account(account):
         logoff(server)
 
 
+def process_account_group(accounts):
+    with ThreadPoolExecutor() as executor:
+        futures = {executor.submit(handle_account, account): account for account in accounts}
+        for future in futures:
+            try:
+                future.result()
+            except Exception as e:
+                logger.error(f"Exception in processing account: {futures[future]} - {e}")
+
+
 def process_accounts(accounts):
-    for account in accounts:
-        try:
-            handle_account(account)
-        except NoConnectionError:
-            logger.info(f"Skipping account: {account['user']} due to connection error")
-        except Exception as e:
-            logger.error(f"Error processing account: {account['user']}")
-            logger.error(e)
-
-
-def main():
-    enabled_accounts = [acct for acct in datastore["antispambox"]["accounts"] if
-                        acct.get("enabled", "False").lower() == "true"]
-    process_accounts(enabled_accounts)
+    group_size = 5
+    for i in range(0, len(accounts), group_size):
+        account_group = accounts[i:i + group_size]
+        process_account_group(account_group)
+        time.sleep(5)
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        with open("/root/accounts/imap_accounts.json", 'r') as f:
+            datastore = json.load(f)
+    except (IndexError, json.JSONDecodeError) as e:
+        logger.error("ERROR: Unable to read imap_accounts.json.")
+        logger.error(e)
+        sys.exit(1)
+
+    enabled_accounts_main = [acct for acct in datastore["antispambox"]["accounts"] if
+                             acct.get("enabled", "False").lower() == "true"]
+    process_accounts(enabled_accounts_main)
     logger.info("Antispambox processing completed")
