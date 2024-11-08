@@ -32,30 +32,56 @@ def handle_account(account):
 
     def scan_spam():
         logger.info(f"Scanning for SPAM with rspamd for account: {username}")
-        cmd = f'/usr/local/bin/irsd --imaphost {host} --imapuser {username} --imappasswd {password} --spaminbox {junk} --imapinbox {inbox} --learnhambox {ham_train} --learnspambox {spam_train} --cachepath rspamd --delete --expunge --partialrun 500'
 
+        cmd = f'/usr/local/bin/irsd --imaphost {host} --imapuser {username} --imappasswd {password} --spaminbox {junk} --imapinbox {inbox} --learnhambox {ham_train} --learnspambox {spam_train} --cachepath rspamd --delete --expunge --partialrun 500'
         process = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         stdout, stderr = process.communicate()
         if process.returncode != 0:
             logger.error(f"ERROR: rspamd scan failed for account: {username}")
             logger.error(stderr.decode())
-        logger.info(stdout.decode())
+        else:
+            logger.info(stdout.decode())
+
+        logger.info(f"Training Rspamd with ham emails for account: {username}")
+        train_emails(ham_train, 'learn_ham')
+
+        logger.info(f"Training Rspamd with spam emails for account: {username}")
+        train_emails(spam_train, 'learn_spam')
+
+    def train_emails(folder_name, command):
+        with IMAPClient(host, timeout=30) as client:
+            client.login(username, password)
+            client.select_folder(folder_name)
+            messages = client.search()
+            for msgid in messages:
+                response = client.fetch(msgid, ['RFC822'])
+                email_message = response[msgid][b'RFC822']
+                process = subprocess.Popen(['rspamc', command], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE)
+                stdout, stderr = process.communicate(input=email_message)
+                if process.returncode != 0:
+                    logger.error(f"Error training message {msgid} with command {command}")
+                    logger.error(stderr.decode())
+                else:
+                    logger.info(f"Trained message {msgid} with command {command}")
+                    client.delete_messages(msgid)
+                    client.expunge()
 
     def login():
         while True:
             try:
-                login_server = IMAPClient(host, timeout=30)
-                login_server.login(username, password)
-                login_server.select_folder(inbox)
-                login_server.idle()
-                logger.info(f"Connection is now in IDLE mode for account: {username}")
-                return login_server
-            except socket.timeout as e:
+                with IMAPClient(host, timeout=30) as login_server:
+                    login_server.login(username, password)
+                    login_server.select_folder(inbox)
+                    login_server.idle()
+                    logger.info(f"Connection is now in IDLE mode for account: {username}")
+                    return login_server
+            except socket.timeout:
                 logger.error(f"Timeout while connecting for account: {username}")
-                break
+                time.sleep(5)  # Wartezeit vor erneutem Versuch
             except (socket.error, IMAPClient.Error) as e:
                 logger.error(f"Connection error for account: {username}")
-                logger.error(e)
+                logger.exception(e)
                 raise NoConnectionError
 
     def logoff(logoff_server):
@@ -94,6 +120,7 @@ def handle_account(account):
 
         return push_server
 
+    server = None
     try:
         server = login()
         server = pushing(server, username, login, scan_spam)
@@ -103,11 +130,12 @@ def handle_account(account):
         logger.error(f"Exception for account: {username}")
         logger.error(e)
     finally:
-        logoff(server)
+        if server:
+            logoff(server)
 
 
 def process_account_group(accounts):
-    with ThreadPoolExecutor() as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         futures = {executor.submit(handle_account, account): account for account in accounts}
         for future in futures:
             try:
